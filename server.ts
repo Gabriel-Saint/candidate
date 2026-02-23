@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import path from "path";
 import dotenv from "dotenv";
@@ -15,14 +14,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+app.use(express.json());
 
-  app.use(express.json());
-
-  // API Routes
-  app.get("/api/students", async (req, res) => {
+// API Routes
+app.get("/api/students", async (req, res) => {
+  try {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return res.status(500).json({ error: "Supabase credentials missing on server" });
+    }
     const { data, error } = await supabase
       .from("students")
       .select("*")
@@ -30,32 +30,28 @@ async function startServer() {
     
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
-  });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  app.post("/api/students", async (req, res) => {
-    try {
-      const { name, email, phone, status, plan } = req.body;
-      console.log("Attempting to insert student:", { name, email, phone, status, plan });
-      
-      const { data, error } = await supabase
-        .from("students")
-        .insert([{ name, email, phone, status: status || 'Ativo', plan }])
-        .select();
-      
-      if (error) {
-        console.error("Supabase insert error:", error);
-        return res.status(500).json({ error: error.message });
-      }
-      
-      console.log("Insert successful:", data);
-      res.status(201).json(data ? data[0] : null);
-    } catch (err: any) {
-      console.error("Server error during post:", err);
-      res.status(500).json({ error: err.message });
-    }
-  });
+app.post("/api/students", async (req, res) => {
+  try {
+    const { name, email, phone, status, plan } = req.body;
+    const { data, error } = await supabase
+      .from("students")
+      .insert([{ name, email, phone, status: status || 'Ativo', plan }])
+      .select();
+    
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(201).json(data ? data[0] : null);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  app.delete("/api/students/:id", async (req, res) => {
+app.delete("/api/students/:id", async (req, res) => {
+  try {
     const { error } = await supabase
       .from("students")
       .delete()
@@ -63,27 +59,31 @@ async function startServer() {
     
     if (error) return res.status(500).json({ error: error.message });
     res.status(204).send();
-  });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  app.patch("/api/students/:id", async (req, res) => {
-    try {
-      const { name, email, phone, status, plan } = req.body;
-      const { data, error } = await supabase
-        .from("students")
-        .update({ name, email, phone, status, plan })
-        .eq("id", req.params.id)
-        .select()
-        .single();
-      
-      if (error) return res.status(500).json({ error: error.message });
-      res.json(data);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+app.patch("/api/students/:id", async (req, res) => {
+  try {
+    const { name, email, phone, status, plan } = req.body;
+    const { data, error } = await supabase
+      .from("students")
+      .update({ name, email, phone, status, plan })
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  // Schedule Routes
-  app.get("/api/schedules", async (req, res) => {
+// Schedule Routes
+app.get("/api/schedules", async (req, res) => {
+  try {
     const { data, error } = await supabase
       .from("schedules")
       .select(`
@@ -94,26 +94,30 @@ async function startServer() {
     
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
-  });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  app.post("/api/schedules", async (req, res) => {
-    try {
-      const { student_id, scheduled_at, duration_minutes, notes } = req.body;
-      const { data, error } = await supabase
-        .from("schedules")
-        .insert([{ student_id, scheduled_at, duration_minutes, notes }])
-        .select()
-        .single();
-      
-      if (error) return res.status(500).json({ error: error.message });
-      res.status(201).json(data);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+app.post("/api/schedules", async (req, res) => {
+  try {
+    const { student_id, scheduled_at, duration_minutes, notes } = req.body;
+    const { data, error } = await supabase
+      .from("schedules")
+      .insert([{ student_id, scheduled_at, duration_minutes, notes }])
+      .select()
+      .single();
+    
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(201).json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  // Financial Routes
-  app.get("/api/transactions", async (req, res) => {
+// Financial Routes
+app.get("/api/transactions", async (req, res) => {
+  try {
     const { data, error } = await supabase
       .from("transactions")
       .select("*")
@@ -121,42 +125,46 @@ async function startServer() {
     
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
-  });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  app.post("/api/transactions", async (req, res) => {
-    try {
-      const { description, amount, type, category, due_date, status } = req.body;
-      const { data, error } = await supabase
-        .from("transactions")
-        .insert([{ description, amount, type, category, due_date, status: status || 'Pendente' }])
-        .select()
-        .single();
-      
-      if (error) return res.status(500).json({ error: error.message });
-      res.status(201).json(data);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+app.post("/api/transactions", async (req, res) => {
+  try {
+    const { description, amount, type, category, due_date, status } = req.body;
+    const { data, error } = await supabase
+      .from("transactions")
+      .insert([{ description, amount, type, category, due_date, status: status || 'Pendente' }])
+      .select()
+      .single();
+    
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(201).json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  app.patch("/api/transactions/:id", async (req, res) => {
-    try {
-      const { status } = req.body;
-      const { data, error } = await supabase
-        .from("transactions")
-        .update({ status })
-        .eq("id", req.params.id)
-        .select()
-        .single();
-      
-      if (error) return res.status(500).json({ error: error.message });
-      res.json(data);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+app.patch("/api/transactions/:id", async (req, res) => {
+  try {
+    const { status } = req.body;
+    const { data, error } = await supabase
+      .from("transactions")
+      .update({ status })
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  app.delete("/api/transactions/:id", async (req, res) => {
+app.delete("/api/transactions/:id", async (req, res) => {
+  try {
     const { error } = await supabase
       .from("transactions")
       .delete()
@@ -164,10 +172,15 @@ async function startServer() {
     
     if (error) return res.status(500).json({ error: error.message });
     res.status(204).send();
-  });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  // Vite middleware for development
+// Vite middleware for development
+async function setupVite() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -179,12 +192,15 @@ async function startServer() {
       res.sendFile(path.join(process.cwd(), "dist", "index.html"));
     });
   }
+}
 
+setupVite();
+
+if (process.env.NODE_ENV !== "production") {
+  const PORT = 3000;
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`VOLL Candidate running on http://localhost:${PORT}`);
   });
-
-  return app;
 }
 
-export default startServer();
+export default app;
