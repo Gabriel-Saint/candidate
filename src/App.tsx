@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { generateClassDescription, generateWhatsAppMessage } from './services/geminiService';
+import { supabase } from './lib/supabase';
 
 interface Student {
   id: number;
@@ -115,9 +116,13 @@ export default function App() {
 
   const fetchStudents = async () => {
     try {
-      const response = await fetch('/api/students');
-      const data = await response.json();
-      setStudents(data);
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setStudents(data || []);
     } catch (error) {
       console.error('Error fetching students:', error);
     } finally {
@@ -127,9 +132,16 @@ export default function App() {
 
   const fetchSchedules = async () => {
     try {
-      const response = await fetch('/api/schedules');
-      const data = await response.json();
-      setSchedules(data);
+      const { data, error } = await supabase
+        .from('schedules')
+        .select(`
+          *,
+          student:students(name)
+        `)
+        .order('scheduled_at', { ascending: true });
+      
+      if (error) throw error;
+      setSchedules(data || []);
     } catch (error) {
       console.error('Error fetching schedules:', error);
     }
@@ -137,9 +149,13 @@ export default function App() {
 
   const fetchTransactions = async () => {
     try {
-      const response = await fetch('/api/transactions');
-      const data = await response.json();
-      setTransactions(data);
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('due_date', { ascending: true });
+      
+      if (error) throw error;
+      setTransactions(data || []);
     } catch (error) {
       console.error('Error fetching transactions:', error);
     }
@@ -148,69 +164,66 @@ export default function App() {
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const url = editingStudentId ? `/api/students/${editingStudentId}` : '/api/students';
-      const method = editingStudentId ? 'PATCH' : 'POST';
+      let result;
+      if (editingStudentId) {
+        result = await supabase
+          .from('students')
+          .update(newStudent)
+          .eq('id', editingStudentId)
+          .select();
+      } else {
+        result = await supabase
+          .from('students')
+          .insert([newStudent])
+          .select();
+      }
       
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newStudent)
-      });
+      const { data, error } = result;
       
-      const result = await response.json();
-      
-      if (response.ok) {
+      if (!error) {
         fetchStudents();
         setIsModalOpen(false);
         setEditingStudentId(null);
         setNewStudent({ name: '', email: '', phone: '', plan: 'Mensal', status: 'Ativo' });
         alert(editingStudentId ? 'Aluno atualizado com sucesso!' : 'Aluno cadastrado com sucesso!');
       } else {
-        console.error('Server error:', result);
-        alert(`Erro: ${result.error || 'Erro desconhecido'}`);
+        console.error('Supabase error:', error);
+        alert(`Erro: ${error.message}`);
       }
     } catch (error: any) {
-      console.error('Network error:', error);
-      alert(`Erro de rede: ${error.message}`);
+      console.error('Unexpected error:', error);
+      alert(`Erro: ${error.message}`);
     }
   };
 
   const handleAddSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/schedules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSchedule)
-      });
+      const { error } = await supabase
+        .from('schedules')
+        .insert([newSchedule]);
       
-      const result = await response.json();
-      
-      if (response.ok) {
+      if (!error) {
         fetchSchedules();
         setIsScheduleModalOpen(false);
         setNewSchedule({ student_id: '', scheduled_at: '', duration_minutes: 60, notes: '' });
         alert('Aula agendada com sucesso!');
       } else {
-        alert(`Erro ao agendar: ${result.error || 'Erro desconhecido'}`);
+        alert(`Erro ao agendar: ${error.message}`);
       }
     } catch (error: any) {
-      alert(`Erro de rede: ${error.message}`);
+      alert(`Erro: ${error.message}`);
     }
   };
 
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTransaction)
-      });
+      const { error } = await supabase
+        .from('transactions')
+        .insert([newTransaction]);
       
-      const result = await response.json();
-      
-      if (response.ok) {
+      if (!error) {
         fetchTransactions();
         setIsFinanceModalOpen(false);
         setNewTransaction({
@@ -223,66 +236,65 @@ export default function App() {
         });
         alert('Lançamento realizado com sucesso!');
       } else {
-        alert(`Erro ao lançar: ${result.error || 'Erro desconhecido'}`);
+        alert(`Erro ao lançar: ${error.message}`);
       }
     } catch (error: any) {
-      alert(`Erro de rede: ${error.message}`);
+      alert(`Erro: ${error.message}`);
     }
   };
 
   const handleUpdateTransactionStatus = async (id: number, currentStatus: string) => {
     const newStatus = currentStatus === 'Pendente' ? 'Pago' : 'Pendente';
     try {
-      const response = await fetch(`/api/transactions/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-      if (response.ok) {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ status: newStatus })
+        .eq('id', id);
+        
+      if (!error) {
         fetchTransactions();
       } else {
-        const result = await response.json();
-        alert(`Erro ao atualizar status: ${result.error || 'Erro desconhecido'}`);
+        alert(`Erro ao atualizar status: ${error.message}`);
       }
     } catch (error: any) {
-      alert(`Erro de rede: ${error.message}`);
+      alert(`Erro: ${error.message}`);
     }
   };
 
   const handleDeleteStudent = async (id: number) => {
     try {
-      const response = await fetch(`/api/students/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'Inativo' })
-      });
-      if (response.ok) {
+      const { error } = await supabase
+        .from('students')
+        .update({ status: 'Inativo' })
+        .eq('id', id);
+        
+      if (!error) {
         fetchStudents();
         setDeactivatingStudentId(null);
         alert('Aluno desativado com sucesso!');
       } else {
-        const result = await response.json();
-        alert(`Erro ao desativar: ${result.error || 'Erro desconhecido'}`);
+        alert(`Erro ao desativar: ${error.message}`);
       }
     } catch (error: any) {
-      alert(`Erro de rede: ${error.message}`);
+      alert(`Erro: ${error.message}`);
     }
   };
 
   const handleDeleteTransaction = async (id: number) => {
     if (!confirm('Tem certeza que deseja excluir este lançamento?')) return;
     try {
-      const response = await fetch(`/api/transactions/${id}`, {
-        method: 'DELETE'
-      });
-      if (response.ok) {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id);
+        
+      if (!error) {
         fetchTransactions();
       } else {
-        const result = await response.json();
-        alert(`Erro ao excluir: ${result.error || 'Erro desconhecido'}`);
+        alert(`Erro ao excluir: ${error.message}`);
       }
     } catch (error: any) {
-      alert(`Erro de rede: ${error.message}`);
+      alert(`Erro: ${error.message}`);
     }
   };
 
